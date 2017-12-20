@@ -1,0 +1,279 @@
+from BayesianNetwork import *
+import itertools
+
+##Implement all of the following functions
+
+## Do not modify any of the objects passed in as parameters!
+## Create a new Factor object to return when performing factor operations
+
+
+
+'''
+multiply_factors(factors)
+
+Parameters :
+              factors : a list of factors to multiply
+Return:
+              a new factor that is the product of the factors in "factors"
+'''
+def multiply_factors(factors):
+    if (len(factors) == 0):
+        return None;
+    elif (len(factors) == 1):
+        return factors[0];
+    else:
+        #print("inital factors:");
+        #print(factors);
+        
+        while (len(factors) > 1):
+            mult_fact = multiply_helper(factors[0], factors[1]);
+            factors[1] = mult_fact;
+            factors = factors[1:];
+            #print(factors);
+            
+        return mult_fact;
+
+def multiply_helper(f1, f2):
+    #----------------------- Domain -------------------
+    f1_domain = [i.domain() for i in f1.get_scope()];
+    f2_domain = [i.domain() for i in f2.get_scope()];
+        
+    f1_cp = list(itertools.product(*f1_domain)); #f1 cartesian product
+    f2_cp = list(itertools.product(*f2_domain)); #f2 cartesian product
+    
+    #print(f1_cp);
+    #print(f2_cp);
+    
+    #---------------------- Scope --------------------
+    all_scopes = f1.get_scope() + f2.get_scope();
+    
+    duplicate = [];
+    duplicate_domain = [];
+    scope = [];
+    
+    #Keep track of the factor's index
+    f1_in = [];
+    f2_in = [];
+    
+    #filter duplicates
+    for i in all_scopes:
+        if i not in scope: 
+            scope.append(i);
+        if (i in f1.get_scope()) and (i in f2.get_scope()) and (i not in duplicate):
+            f1_in.append(f1.get_scope().index(i));
+            f2_in.append(f2.get_scope().index(i));            
+            duplicate.append(i);
+            duplicate_domain.append(i.domain());
+    
+    dup_cp = list(itertools.product(*duplicate_domain)); #duplicate cartesian product
+    
+    merged_factor = Factor("MF" + str(f1) + " with " + str(f2) + " " + str(scope), scope);
+    
+    #------------------- Value ----------------------
+    for dup in dup_cp:
+        count = 1;
+        
+        #get number of combos
+        for i in scope:
+            count = (count * len(i.domain()));    
+        for i in duplicate:
+            count = (count / len(i.domain()));
+        
+        #find valid values
+        valid1 = [];
+        valid2 = [];
+        
+        while (count > 0):
+            for fact1 in f1_cp: 
+                if check(fact1, f1_in, dup):
+                    if (fact1 not in valid1):
+                        valid1.append(fact1);
+    		
+            for fact2 in f2_cp:
+                if check(fact2, f2_in, dup):
+                    if (fact2 not in valid2):
+                        valid2.append(fact2);     
+                        
+            #Associate values with factors
+            for val1 in valid1:
+                for val2 in valid2:
+                    value1 = f1.get_value(val1);
+                    value2 = f2.get_value(val2);
+                    merged_value = (value1 * value2);
+
+                    val_assign = [];
+                    for i in range(0, len(val1)):
+                        val_assign.append(val1[i]);
+            				
+                    for i in range(0, len(val2)):
+                        if (i not in f2_in):
+                            val_assign.append(val2[i]);
+        		
+                    merged_factor.add_value_at_assignment(merged_value, val_assign);
+                    count -= 1;
+   
+    return merged_factor;
+
+def check(cp, ind, dup_cp):	
+    d_i = 0;
+    for i in ind:
+        if (cp[i] != dup_cp[d_i]):
+            return False;
+        d_i += 1;
+       		
+    return True;
+
+'''
+restrict_factor(factor, variable, value):
+
+Parameters :
+              factor : the factor to restrict
+              variable : the variable to restrict "factor" on
+              value : the value to restrict to
+Return:
+              A new factor that is the restriction of "factor" by
+              "variable"="value"
+      
+              If "factor" has only one variable its restriction yields a 
+              constant factor
+'''
+def restrict_factor(factor, variable, value):
+    scope = [];
+    dom = [];
+    r_dom = [];
+    
+    for i in factor.get_scope():
+        if (i != variable):
+            scope.append(i);
+            dom.append(i.domain());
+            r_dom.append(i.domain());
+        else:
+            dom.append([value]);
+    
+    #print(domains);
+    #print(r_domain);
+    
+    restrict_fact = Factor("RF " + str(factor) + " " + str(scope), scope);
+    
+    rd_cp = list(itertools.product(*r_dom));
+    d_cp = list(itertools.product(*dom));
+    
+    r_assign = [list(i) for i in rd_cp];
+    for i in d_cp:
+        assign = r_assign[d_cp.index(i)]; 
+        restrict_fact.add_value_at_assignment(factor.get_value(i), assign);
+
+    return restrict_fact;
+
+'''    
+sum_out_variable(factor, variable)
+
+Parameters :
+              factor : the factor to sum out "variable" on
+              variable : the variable to sum out
+Return:
+              A new factor that is "factor" summed out over "variable"
+'''
+def sum_out_variable(factor, variable):
+    scope = [];
+    dom = [];
+    s_dom = [];
+
+    for i in factor.get_scope():
+        if (i != variable):
+            scope.append(i);
+            dom.append(i.domain());
+            s_dom.append(i.domain());
+        else:
+            dom.append([variable.domain()[0]]);	
+   
+    s_fact = Factor("SM " + str(factor) + " " + str(scope), scope);
+
+    d_cp = list(itertools.product(*dom));
+    sd_cp = list(itertools.product(*s_dom));
+    d_cp_list = [list(i) for i in d_cp];
+    sd_cp_list = [list(i) for i in sd_cp];  
+
+    for i in d_cp_list:
+        assign = sd_cp_list[d_cp_list.index(i)];
+        
+        value = 0;
+        var_in = factor.get_scope().index(variable);
+    
+        for j in variable.domain():
+            i[var_in] = j;
+            value += factor.get_value(i);      
+
+        s_fact.add_value_at_assignment(value, assign);
+
+    return s_fact;
+
+'''
+VariableElimination(net, queryVar, evidenceVars)
+
+ Parameters :
+              net: a BayesianNetwork object
+              queryVar: a Variable object
+                        (the variable whose distribution we want to compute)
+              evidenceVars: a list of Variable objects.
+                            Each of these variables should have evidence set
+                            to a particular value from its domain using
+                            the set_evidence function. 
+
+ Return:
+         A distribution over the values of QueryVar
+ Format:  A list of numbers, one for each value in QueryVar's Domain
+         -The distribution should be normalized.
+         -The i'th number is the probability that QueryVar is equal to its
+          i'th value given the setting of the evidence
+ Example:
+
+ QueryVar = A with Dom[A] = ['a', 'b', 'c'], EvidenceVars = [B, C]
+ prior function calls: B.set_evidence(1) and C.set_evidence('c')
+
+ VE returns:  a list of three numbers. E.g. [0.5, 0.24, 0.26]
+
+ These numbers would mean that Pr(A='a'|B=1, C='c') = 0.5
+                               Pr(A='a'|B=1, C='c') = 0.24
+                               Pr(A='a'|B=1, C='c') = 0.26
+'''       
+def VariableElimination(net, queryVar, evidenceVars):
+    factors = net.factors();
+
+    #restrict
+    for i in evidenceVars:
+        for f in factors:
+            if (i in f.get_scope()):
+                r_fact = restrict_factor(f, i, i.get_evidence());
+                factors.insert(factors.index(f), r_fact);
+                factors.remove(f);
+
+    order = min_fill_ordering(factors, queryVar);
+
+    #eliminate
+    for i in order:
+        elim = [];
+        for f in factors:
+            if (i in f.get_scope()):
+                elim.append(f);
+        for q in elim:
+            factors.remove(q);
+        
+        m_fact = multiply_factors(elim);
+        s_fact = sum_out_variable(m_fact, i);
+        factors.append(s_fact);
+
+    #product and normalize
+    fact = multiply_factors(factors);
+
+    total = 0;
+    for q in queryVar.domain():
+        total += fact.get_value([q]);
+
+    distrib = []
+    for q in queryVar.domain():
+        prob = (fact.get_value([q]) / total);
+        fact.add_value_at_assignment(prob, [q]);
+        distrib.append(prob);
+
+    return distrib;

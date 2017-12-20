@@ -1,0 +1,133 @@
+#Implement the function DecisionSupport
+
+'''
+For this question you may use the code from part 1
+
+Note however that part 2 will be marked independent of part 1
+
+The solution for VariableElimination.py will be used for testing part2 instead
+of the copy you submit. 
+'''
+
+from MedicalBayesianNetwork import *
+from VariableElimination import *
+import itertools
+
+'''
+Parameters:
+             medicalNet - A MedicalBayesianNetwork object                        
+
+             patient    - A Patient object
+                          The patient to calculate treatment-outcome
+                          probabilites for
+Return:
+         -A factor object
+
+         This factor should be a probability table relating all possible
+         Treatments to all possible outcomes
+'''
+def DecisionSupport(medicalNet, patient):
+    factors = medicalNet.net.factors();
+    evidenceVars = patient.evidenceVariables();
+    medicalNet.set_evidence_by_patient(patient);
+    
+    #restrict
+    for i in evidenceVars:
+        for f in factors:
+            if (i in f.get_scope()):
+                r_fact = restrict_factor(f, i, i.get_evidence());
+                factors.insert(factors.index(f), r_fact);
+                factors.remove(f);
+                
+    t_vars = medicalNet.getTreatmentVars();
+    outcome_vars = medicalNet.getOutcomeVars();    
+    queryVar = [];
+    for i in t_vars:
+        if (i not in queryVar):
+            queryVar.append(i);
+    for i in outcome_vars:
+        if (i not in queryVar):
+            queryVar.append(i); 
+            
+    order = min_fill_ordering_mult(factors, queryVar); #need queryVar
+
+    #eliminate
+    for i in order:
+        elim = [];
+        for f in factors:
+            if (i in f.get_scope()):
+                elim.append(f);
+        for q in elim:
+            factors.remove(q);
+            
+        m_fact = multiply_factors(elim);
+        s_fact = sum_out_variable(m_fact, i);
+        factors.append(s_fact);
+    
+    fact_copy = factors[:];
+    for i in outcome_vars:
+        elim = [];
+        for f in fact_copy:
+            if (i in f.get_scope()):
+                elim.append(f);
+        for q in elim:
+            fact_copy.remove(q);
+            
+        m_fact = multiply_factors(elim);
+        s_fact = sum_out_variable(m_fact, i);
+        fact_copy.append(s_fact);
+
+    #product and normalize
+    fact = multiply_factors(factors);
+    total = 0;
+    doms = [i.domain() for i in fact.get_scope()];
+    d_cp = list(itertools.product(*doms));
+    d_cp_list = [list(i) for i in d_cp];
+
+    for i in d_cp_list:
+        total += fact.get_value(i);
+
+    for i in d_cp_list:
+        fact.add_value_at_assignment((fact.get_value(i) / total), i);
+
+    #product and normalize treatment 
+    t_fact = multiply_factors(fact_copy);
+    t_total = 0;
+    t_doms = [i.domain() for i in t_fact.get_scope()];
+    t_d_cp = list(itertools.product(*t_doms));
+    t_d_cp_list = [list(i) for i in t_d_cp];
+    
+    for i in t_d_cp_list:
+        t_total += t_fact.get_value(i);
+
+    for i in t_d_cp_list:
+        t_fact.add_value_at_assignment((t_fact.get_value(i) / t_total), i);
+
+    # conditional prob
+    for i in d_cp_list:
+        t_vals = [];
+        for s in t_fact.get_scope():
+            t_vals.append(i[fact.get_scope().index(s)]);
+    
+        fact.add_value_at_assignment((fact.get_value(i) / t_fact.get_value(t_vals)), i);
+           
+    return fact;
+
+def min_fill_ordering_mult(Factors, QueryVar):
+    scopes = []
+    for f in Factors:
+        scopes.append(list(f.get_scope()))
+    Vars = []
+    for s in scopes:
+        for v in s:
+            if not v in Vars and v not in QueryVar:
+                Vars.append(v)
+
+    ordering = []
+    while Vars:
+        (var,new_scope) = min_fill_var(scopes,Vars)
+        ordering.append(var)
+        if var in Vars:
+            Vars.remove(var)
+        scopes = remove_var(var, new_scope, scopes)
+    return ordering
